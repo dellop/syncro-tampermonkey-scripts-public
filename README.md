@@ -1,4 +1,4 @@
-# Syncro Ticket Creator
+# Syncro AI Ticket Creator
 
 A Tampermonkey userscript that enables creating Syncro MSP tickets from natural language descriptions using AI-powered parsing.
 
