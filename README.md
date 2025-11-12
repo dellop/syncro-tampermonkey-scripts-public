@@ -61,6 +61,8 @@ After installation, configure the script with your API keys:
 
 5. Click "Save" to store your configuration
 
+**NOTE** The Ticket types are hard-coded because they are just free-text fields. If you want to change them, just search in the code for one like "Project / Planned Work". **NOTE**
+
 ## Usage
 
 1. Open your Syncro MSP dashboard
