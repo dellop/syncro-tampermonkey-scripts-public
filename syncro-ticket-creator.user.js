@@ -1369,7 +1369,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks, 
             <div class="ticket-creator-sidebar-content">
                 <div class="ticket-creator-input-section">
                     <label for="ticket-description-input">Ticket Description:</label>
-                    <textarea id="ticket-description-input" placeholder="e.g., 'Trever from Bollig called and his drive letters aren't mapping on his microsoft surface.'"></textarea>
+                    <textarea id="ticket-description-input" placeholder="e.g., 'Trever from Apple called and his drive letters aren't mapping on his microsoft surface.'"></textarea>
                     <small style="color: #666; font-size: 11px; display: block; margin-top: 5px;">
                         Include the person's name, company name, and the issue description. The AI will extract the details automatically.
                     </small>
@@ -1890,5 +1890,6 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks, 
     }
 
 })();
+
 
 
