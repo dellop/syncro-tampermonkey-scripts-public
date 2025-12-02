@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Syncro AI Ticket Creator
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.4
 // @description  Create Syncro tickets from natural language descriptions using AI
 // @author       mark
 // @match        https://*.syncromsp.com/*
@@ -18,7 +18,7 @@
     // Configuration - stored persistently
     let OPENROUTER_API_KEY = GM_getValue('openrouter_api_key', '');
     let SYNCRO_API_KEY = GM_getValue('syncro_api_key', '');
-    let SYNCRO_SUBDOMAIN = GM_getValue('syncro_subdomain', 'firebytes');
+    let SYNCRO_SUBDOMAIN = GM_getValue('syncro_subdomain', '');
     let DEFAULT_AI_MODEL = GM_getValue('default_ai_model', '');
     let USE_SHIELD_DOMAIN = GM_getValue('use_shield_domain', true);
 
@@ -99,34 +99,58 @@
         });
     }
 
-    // Fetch Syncro customers
+    // Fetch Syncro customers (handles pagination)
     function fetchSyncroCustomers(callback) {
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: `https://${SYNCRO_SUBDOMAIN}.syncromsp.com/api/v1/customers?api_key=${SYNCRO_API_KEY}`,
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            onload: function(response) {
-                try {
-                    const data = JSON.parse(response.responseText);
-                    if (data.customers) {
-                        syncroCustomers = data.customers;
-                        callback(null, syncroCustomers);
-                    } else {
-                        callback('Unexpected customers response format', null);
+        const allCustomers = [];
+
+        function fetchPage(page) {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `https://${SYNCRO_SUBDOMAIN}.syncromsp.com/api/v1/customers?api_key=${SYNCRO_API_KEY}&page=${page}`,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                onload: function(response) {
+                    try {
+                        const data = JSON.parse(response.responseText);
+
+                        if (data.customers && Array.isArray(data.customers)) {
+                            // Add customers from this page
+                            allCustomers.push(...data.customers);
+
+                            // Check if there are more pages
+                            const totalPages = data.meta ? data.meta.total_pages || 1 : 1;
+
+                            if (page < totalPages) {
+                                // Fetch next page
+                                fetchPage(page + 1);
+                            } else {
+                                // All pages fetched, return all customers
+                                syncroCustomers = allCustomers;
+                                callback(null, syncroCustomers);
+                            }
+                        } else {
+                            // No customers array, return what we have
+                            syncroCustomers = allCustomers;
+                            callback(null, syncroCustomers);
+                        }
+                    } catch (e) {
+                        // On error, return what we have so far
+                        callback('Error parsing customers response: ' + e.message, allCustomers);
                     }
-                } catch (e) {
-                    callback('Error parsing customers response: ' + e.message, null);
+                },
+                onerror: function(error) {
+                    // On network error, return what we have so far
+                    callback('Error fetching customers: ' + JSON.stringify(error), allCustomers);
                 }
-            },
-            onerror: function(error) {
-                callback('Error fetching customers: ' + JSON.stringify(error), null);
-            }
-        });
+            });
+        }
+
+        // Start fetching from page 1
+        fetchPage(1);
     }
 
-    // Fetch Syncro assets for a specific contact (user's computers)
+    // Fetch Syncro assets for a specific contact (user's computers) - handles pagination
     function fetchUserAssets(contactId, callback) {
         // First get the customer ID for this contact
         const contact = preloadedUsers.find(u => u.id == contactId);
@@ -136,37 +160,59 @@
         }
 
         const customerId = contact.customer_id;
+        const allAssets = [];
 
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: `https://${SYNCRO_SUBDOMAIN}.syncromsp.com/api/v1/customer_assets?customer_id=${customerId}&api_key=${SYNCRO_API_KEY}`,
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            onload: function(response) {
-                try {
-                    const data = JSON.parse(response.responseText);
-                    if (data.assets) {
-                        // Debug: log the structure of the first asset to understand the data format
-                        if (data.assets.length > 0) {
-                            console.log('Sample asset structure:', data.assets[0]);
+        function fetchPage(page) {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `https://${SYNCRO_SUBDOMAIN}.syncromsp.com/api/v1/customer_assets?customer_id=${customerId}&api_key=${SYNCRO_API_KEY}&page=${page}`,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                onload: function(response) {
+                    try {
+                        const data = JSON.parse(response.responseText);
+
+                        if (data.assets && Array.isArray(data.assets)) {
+                            // Add assets from this page
+                            allAssets.push(...data.assets);
+
+                            // Debug: log the structure of the first asset to understand the data format
+                            if (page === 1 && data.assets.length > 0) {
+                                console.log('Sample asset structure:', data.assets[0]);
+                            }
+
+                            // Check if there are more pages
+                            const totalPages = data.meta ? data.meta.total_pages || 1 : 1;
+
+                            if (page < totalPages) {
+                                // Fetch next page
+                                fetchPage(page + 1);
+                            } else {
+                                // All pages fetched
+                                // In this Syncro setup, assets are assigned to customers, not individual contacts
+                                // So we show all customer assets when a user is selected
+                                console.log('Assets are assigned to customers, not contacts. Showing all customer assets:', allAssets.length);
+                                callback(null, allAssets);
+                            }
+                        } else {
+                            // No assets array, return what we have
+                            callback(null, allAssets);
                         }
-
-                        // In this Syncro setup, assets are assigned to customers, not individual contacts
-                        // So we show all customer assets when a user is selected
-                        console.log('Assets are assigned to customers, not contacts. Showing all customer assets:', data.assets.length);
-                        callback(null, data.assets);
-                    } else {
-                        callback('Unexpected assets response format', null);
+                    } catch (e) {
+                        // On error, return what we have so far
+                        callback('Error parsing assets response: ' + e.message, allAssets);
                     }
-                } catch (e) {
-                    callback('Error parsing assets response: ' + e.message, null);
+                },
+                onerror: function(error) {
+                    // On network error, return what we have so far
+                    callback('Error fetching user assets: ' + JSON.stringify(error), allAssets);
                 }
-            },
-            onerror: function(error) {
-                callback('Error fetching user assets: ' + JSON.stringify(error), null);
-            }
-        });
+            });
+        }
+
+        // Start fetching from page 1
+        fetchPage(1);
     }
 
     // Fetch Syncro users for a specific customer (handles pagination)
@@ -306,6 +352,7 @@
         'Maintenance / Preventitive',
         'User Account / Access',
         'Security / Malware',
+        'Internal / MSP Operations',
         'Other'
     ];
 
@@ -346,6 +393,9 @@
         }
         if (lowerProblemType.includes('security') || lowerProblemType.includes('malware') || lowerProblemType.includes('virus')) {
             return 'Security / Malware';
+        }
+        if (lowerProblemType.includes('MSP') || lowerProblemType.includes('internal') || lowerProblemType.includes('operations')) {
+            return 'Internal / MSP Operations';
         }
 
         // Default to 'Other' if no match found
@@ -398,6 +448,7 @@
    - "Maintenance / Preventitive"
    - "User Account / Access"
    - "Security / Malware"
+   - "Internal / MSP Operations"
    - "Other"
 
 Examples:
@@ -601,7 +652,14 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks, 
         computerSelect.innerHTML = '<option value="">No computer selected</option>';
 
         if (assets && assets.length > 0) {
-            assets.forEach(asset => {
+            // Sort assets alphabetically by name
+            const sortedAssets = assets.slice().sort((a, b) => {
+                const nameA = (a.name || `Asset #${a.id}`).toLowerCase();
+                const nameB = (b.name || `Asset #${b.id}`).toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+
+            sortedAssets.forEach(asset => {
                 const option = document.createElement('option');
                 option.value = asset.id;
                 option.textContent = asset.name || `Asset #${asset.id}`;
@@ -1375,6 +1433,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks, 
                             <option value="Maintenance / Preventitive">Maintenance / Preventitive</option>
                             <option value="User Account / Access">User Account / Access</option>
                             <option value="Security / Malware">Security / Malware</option>
+                            <option value="Internal / MSP Operations">Internal / MSP Operations</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>
@@ -1831,3 +1890,5 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks, 
     }
 
 })();
+
+
